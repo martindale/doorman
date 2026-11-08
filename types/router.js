@@ -36,7 +36,7 @@ class Router extends Service {
     for (let i in parts) {
       let token = parts[i];
       let command = token.toLowerCase();
-      let handler = this.handlers[command];
+      let handler = Object.prototype.hasOwnProperty.call(this.handlers, command) ? this.handlers[command] : null;
       let result = null;
 
       if (handler) {

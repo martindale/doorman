@@ -197,6 +197,35 @@ describe('Doorman', function () {
     await doorman.stop();
   });
 
+  it('starts its plugins again after a stop', async function () {
+    let starts = 0;
+    class Counter extends Plugin {
+      async start () { starts += 1; return this; }
+      async stop () { return this; }
+    }
+    const doorman = new Doorman({ http: false, local: false });
+    doorman.use(Counter, { name: 'counter' });
+    await doorman.start();
+    await doorman.stop();
+    await doorman.start();
+    assert.strictEqual(starts, 2);
+    await doorman.stop();
+  });
+
+  it('reports a plugin error instead of crashing the host', async function () {
+    class Failing extends Plugin {}
+    const doorman = new Doorman({ http: false, local: false });
+    const errors = [];
+    doorman.on('error', (...parts) => errors.push(parts.join(' ')));
+    await doorman.start();
+    doorman.use(Failing, { name: 'failing' });
+    doorman.plugins.failing.emit('error', 'save failed');
+    assert.strictEqual(errors.length, 1);
+    assert.ok(errors[0].includes('[DOORMAN:PLUGIN:failing]'));
+    assert.ok(errors[0].includes('save failed'));
+    await doorman.stop();
+  });
+
   it('detaches adapter listeners on stop() so a restart does not double events', async function () {
     const doorman = new Doorman({ http: false, local: false });
     const adapter = new FakeAdapter();

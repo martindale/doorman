@@ -23,6 +23,15 @@ describe('Discord', function () {
     assert(Discord instanceof Function);
   });
 
+  it('posts plugin text without pinging anyone', async function () {
+    const client = new FakeFabricDiscord();
+    const adapter = new Discord({ client, replies: true });
+    await adapter.send('c1', 'hi @everyone <@&123>');
+    await adapter.send('c1', { content: 'hi', allowedMentions: { parse: ['everyone'] } });
+    assert.deepStrictEqual(client.posted[0], { channel: 'c1', message: { content: 'hi @everyone <@&123>', allowedMentions: { parse: [] } } });
+    assert.deepStrictEqual(client.posted[1].message.allowedMentions, { parse: [] });
+  });
+
   it('attaches to an existing @fabric/discord client and maps events', async function () {
     const client = new FakeFabricDiscord();
     const adapter = new Discord({ client });

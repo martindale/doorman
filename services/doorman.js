@@ -680,6 +680,11 @@ class Doorman extends Service {
         }
       });
 
+      // A plugin that emits `error` with nobody listening would throw and take the host down.
+      handler.on('error', function (...parts) {
+        self.emit('error', `[DOORMAN:PLUGIN:${name}]`, ...parts);
+      });
+
       handler.on('whisper', function (whisper) {
         const parts = String(whisper.target || '').split('/');
         const service = self.services[parts[0]];
@@ -830,6 +835,16 @@ class Doorman extends Service {
       this.config.services.forEach(service => this.enable(service));
     }
 
+    // `use()` starts a plugin once; the ones `stop()` stopped start again here.
+    for (const name of this._stoppedPlugins || []) {
+      const plugin = this.plugins[name];
+      if (!plugin || typeof plugin.start !== 'function') continue;
+      this._pluginStarts[name] = Promise.resolve(plugin.start()).catch((error) => {
+        this.emit('error', `[DOORMAN:PLUGIN:${name}] start: ${errorMessage(error)}`);
+      });
+    }
+    this._stoppedPlugins = [];
+
     if (this.config.plugins && Array.isArray(this.config.plugins)) {
       this.config.plugins.forEach(module => this.use(module));
     }
@@ -884,9 +899,11 @@ class Doorman extends Service {
   }
 
   async stop () {
-    for (const plugin of Object.values(this.plugins)) {
+    this._stoppedPlugins = [];
+    for (const [name, plugin] of Object.entries(this.plugins)) {
       if (typeof plugin.stop !== 'function') continue;
       try { await plugin.stop(); } catch (_) { /* best effort */ }
+      this._stoppedPlugins.push(name);
     }
 
     for (const name of Object.keys(this.services)) {

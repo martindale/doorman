@@ -818,8 +818,12 @@ class Discord extends Service {
 
   async send (channel, message) {
     if (!this.canSend || !this.client) return null;
-    if (typeof this.client.postToChannel === 'function') return this.client.postToChannel(channel, message);
-    return null;
+    if (typeof this.client.postToChannel !== 'function') return null;
+    // Plugin text carries display names and user input: it never pings anyone.
+    const payload = message && typeof message === 'object'
+      ? Object.assign({}, message, { allowedMentions: NO_MENTIONS })
+      : { content: String(message == null ? '' : message), allowedMentions: NO_MENTIONS };
+    return this.client.postToChannel(channel, payload);
   }
 
   /**

@@ -601,7 +601,7 @@ class Campaigns extends Service {
    * @returns {Object|null}
    */
   campaign (id) {
-    const campaign = this.content.campaigns[id];
+    const campaign = this._find(id);
     if (!campaign) return null;
     return Object.assign(JSON.parse(JSON.stringify(campaign)), { stats: this._stats(campaign) });
   }
@@ -639,8 +639,14 @@ class Campaigns extends Service {
     if (typeof this._timer.unref === 'function') this._timer.unref();
   }
 
+  _find (id) {
+    const key = String(id == null ? '' : id);
+    if (!Campaign.CAMPAIGN_ID.test(key) || !Object.prototype.hasOwnProperty.call(this.content.campaigns, key)) return null;
+    return this.content.campaigns[key];
+  }
+
   _get (id) {
-    const campaign = this.content.campaigns[id];
+    const campaign = this._find(id);
     if (!campaign) throw httpError(404, 'No such campaign');
     return campaign;
   }
@@ -890,8 +896,8 @@ class Campaigns extends Service {
   }
 
   async _answer (campaignId, action, user) {
-    const campaign = this.content.campaigns[campaignId];
-    const delivery = campaign && user ? (this.content.deliveries[campaignId] || {})[user] : null;
+    const campaign = this._find(campaignId);
+    const delivery = campaign && user ? (this.content.deliveries[campaign.id] || {})[user] : null;
     if (!delivery || delivery.status !== 'sent') return { ok: false, error: INACTIVE };
     const now = new Date(this.now).toISOString();
 
