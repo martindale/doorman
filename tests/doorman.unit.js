@@ -197,6 +197,52 @@ describe('Doorman', function () {
     await doorman.stop();
   });
 
+  it('restarts a configured plugin instead of constructing a second one', async function () {
+    let starts = 0;
+    let constructed = 0;
+    class Counter extends Plugin {
+      constructor (settings) {
+        super(settings);
+        constructed += 1;
+      }
+
+      async start () { starts += 1; return this; }
+      async stop () { return this; }
+    }
+    const doorman = new Doorman({ http: false, local: false, plugins: [Counter] });
+    await doorman.start();
+    const first = doorman.plugins.counter;
+    assert.strictEqual(constructed, 1);
+    assert.strictEqual(starts, 1);
+    await doorman.stop();
+    await doorman.start();
+    assert.strictEqual(constructed, 1);
+    assert.strictEqual(starts, 2);
+    assert.strictEqual(doorman.plugins.counter, first);
+    await doorman.stop();
+  });
+
+  it('keeps starting later plugins when one start throws', async function () {
+    class Boom extends Plugin {
+      start () { throw new Error('boom'); }
+    }
+    class Later extends Plugin {
+      constructor (settings) {
+        super(settings);
+        this.started = false;
+      }
+
+      async start () { this.started = true; return this; }
+    }
+    const doorman = new Doorman({ http: false, local: false, plugins: [Boom, Later] });
+    const errors = [];
+    doorman.on('error', (error) => errors.push(String(error)));
+    await doorman.start();
+    assert.strictEqual(doorman.plugins.later.started, true);
+    assert.ok(errors.some((error) => error.includes('boom')));
+    await doorman.stop();
+  });
+
   it('starts its plugins again after a stop', async function () {
     let starts = 0;
     class Counter extends Plugin {

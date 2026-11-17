@@ -101,6 +101,12 @@ function normalizeCommand (definition) {
   return out;
 }
 
+function pluginConfigName (plugin) {
+  if (typeof plugin === 'string') return plugin;
+  if (plugin instanceof Function) return String(plugin.pluginName || plugin.name || '').toLowerCase();
+  return '';
+}
+
 function hasLifecycle (Handler) {
   return !!(Handler && Handler.prototype &&
     typeof Handler.prototype.start === 'function' &&
@@ -682,7 +688,8 @@ class Doorman extends Service {
 
       // A plugin that emits `error` with nobody listening would throw and take the host down.
       handler.on('error', function (...parts) {
-        self.emit('error', `[DOORMAN:PLUGIN:${name}]`, ...parts);
+        const detail = parts.map((part) => errorMessage(part)).filter(Boolean).join(' ');
+        self.emit('error', detail ? `[DOORMAN:PLUGIN:${name}] ${detail}` : `[DOORMAN:PLUGIN:${name}]`);
       });
 
       handler.on('whisper', function (whisper) {
@@ -699,8 +706,8 @@ class Doorman extends Service {
 
       // Plugins start immediately; Doorman#start() awaits these so hosts know
       // every plugin (and its Store) is ready once `start()` resolves.
-      self._pluginStarts[name] = Promise.resolve(handler.start()).catch((error) => {
-        self.emit('error', `[DOORMAN:PLUGIN:${name}] start: ${error && error.message ? error.message : error}`);
+      self._pluginStarts[name] = Promise.resolve().then(() => handler.start()).catch((error) => {
+        self.emit('error', `[DOORMAN:PLUGIN:${name}] start: ${errorMessage(error)}`);
       });
 
       if (handler.triggers) {
@@ -836,17 +843,24 @@ class Doorman extends Service {
     }
 
     // `use()` starts a plugin once; the ones `stop()` stopped start again here.
+    // A name restarted here is not constructed again from `config.plugins`.
+    const restarted = new Set();
     for (const name of this._stoppedPlugins || []) {
       const plugin = this.plugins[name];
       if (!plugin || typeof plugin.start !== 'function') continue;
-      this._pluginStarts[name] = Promise.resolve(plugin.start()).catch((error) => {
+      restarted.add(name);
+      this._pluginStarts[name] = Promise.resolve().then(() => plugin.start()).catch((error) => {
         this.emit('error', `[DOORMAN:PLUGIN:${name}] start: ${errorMessage(error)}`);
       });
     }
     this._stoppedPlugins = [];
 
     if (this.config.plugins && Array.isArray(this.config.plugins)) {
-      this.config.plugins.forEach(module => this.use(module));
+      this.config.plugins.forEach((module) => {
+        const name = pluginConfigName(module);
+        if (name && restarted.has(name)) return;
+        this.use(module);
+      });
     }
 
     if (this.config.triggers) {

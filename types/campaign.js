@@ -49,7 +49,7 @@ class Campaign {
     const type = content.type == null ? 'message' : String(content.type);
     if (!['message', 'script'].includes(type)) fail('content.type must be "message" or "script"');
     const text = String(content.text == null ? '' : content.text).trim();
-    if (!text) fail('content.text is required');
+    if (!text && type !== 'script') fail('content.text is required');
     if (text.length > MAX_TEXT) fail(`content.text must be at most ${MAX_TEXT} characters`);
     const script = type === 'script' ? String(content.script || '') : null;
     if (type === 'script' && !SCRIPT_ID.test(script)) fail('content.script must name a script');
@@ -87,7 +87,8 @@ class Campaign {
     const content = Campaign.content(input.content);
     const filter = Campaign.filter(input.filter);
     const title = String(input.title == null ? '' : input.title).trim().slice(0, MAX_TITLE) ||
-      content.text.split('\n')[0].slice(0, 60);
+      content.text.split('\n')[0].slice(0, 60) ||
+      (content.script ? content.script : '');
     return { title, content, filter };
   }
 

@@ -76,6 +76,9 @@ describe('Campaign', function () {
     assert.deepStrictEqual(draft.filter.guilds, []);
 
     assert.throws(() => Campaign.draft({ content: { text: '' } }), /content.text is required/);
+    const scriptOnly = Campaign.draft({ content: { type: 'script', script: 'welcome' } });
+    assert.deepStrictEqual(scriptOnly.content, { type: 'script', text: '', script: 'welcome' });
+    assert.strictEqual(scriptOnly.title, 'welcome');
     assert.throws(() => Campaign.draft({ content: { text: 'x'.repeat(1801) } }), /at most 1800/);
     assert.throws(() => Campaign.draft({ content: { type: 'script', text: 'x' } }), /must name a script/);
     assert.throws(() => Campaign.draft({ content: { text: 'x' }, filter: { activeWithinDays: 0 } }), /activeWithinDays/);
