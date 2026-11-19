@@ -3,7 +3,7 @@ npm warn gitignore-fallback No .npmignore file found, using .gitignore for file 
 
 added 936 packages, and audited 937 packages in 1m
 
-185 packages are looking for funding
+186 packages are looking for funding
   run `npm fund` for details
 
 found 0 vulnerabilities

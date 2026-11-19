@@ -204,6 +204,7 @@ class Script {
       cancelled: { say: text(definition.cancelled && definition.cancelled.say, 'cancelled.say') },
       onComplete: []
     };
+    if (definition.panel === true) out.panel = true;
     if (out.ttlMs !== null && !(out.ttlMs > 0)) fail('ttlMs must be a positive number');
     if (definition.requires != null) {
       if (!Array.isArray(definition.requires)) fail('requires must be a list');

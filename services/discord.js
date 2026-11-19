@@ -294,6 +294,7 @@ class Discord extends Service {
     this._listeners = {};
     this._interactionClient = null;
     this._steps = new Map();
+    this._panels = new Map();
     this._commandNames = new Set();
     this._voices = new Map();
     this._homeFetches = new Map();
@@ -437,7 +438,7 @@ class Discord extends Service {
       user: interaction.user ? String(interaction.user.id) : null,
       value,
       action,
-      respond: (result) => this._respond(interaction, result)
+      respond: (result) => (step && step.panel ? null : this._respond(interaction, result))
     });
   }
 
@@ -839,20 +840,35 @@ class Discord extends Service {
   async whisper (userId, object) {
     if (!this.canWhisper || !this.client) throw new Error('[DOORMAN:DISCORD] private messages are off');
     let payload;
+    const panelSession = object && typeof object === 'object' && (object.type === 'ScriptStep' || object.type === 'PanelNote') && object.panel !== false
+      ? (object.type === 'PanelNote' || object.panel ? object.session : null)
+      : null;
     if (object && typeof object === 'object' && object.type === 'ScriptStep') {
       this._rememberStep(object);
       payload = renderStep(object);
     } else if (object && typeof object === 'object' && object.type === 'CampaignMessage') {
       payload = renderCampaign(object);
+    } else if (object && typeof object === 'object' && object.type === 'PanelNote') {
+      payload = { content: truncate(object.text, MAX_CONTENT), components: [] };
     } else {
       payload = { content: truncate(object && typeof object === 'object' ? object.text : object, MAX_CONTENT), components: [] };
     }
     payload.allowedMentions = NO_MENTIONS;
-    if (typeof this.client.sendDirect === 'function') return this.client.sendDirect(String(userId), payload);
-    const users = this.client.client && this.client.client.users;
-    if (!users || typeof users.fetch !== 'function') throw new Error('[DOORMAN:DISCORD] client is not ready');
-    const user = await users.fetch(String(userId));
-    return user.send(payload);
+    const existing = panelSession ? this._panels.get(panelSession) : null;
+    if (existing && typeof existing.edit === 'function') {
+      await existing.edit(payload);
+      return existing;
+    }
+    let sent;
+    if (typeof this.client.sendDirect === 'function') sent = await this.client.sendDirect(String(userId), payload);
+    else {
+      const users = this.client.client && this.client.client.users;
+      if (!users || typeof users.fetch !== 'function') throw new Error('[DOORMAN:DISCORD] client is not ready');
+      const user = await users.fetch(String(userId));
+      sent = await user.send(payload);
+    }
+    if (panelSession && sent) this._panels.set(panelSession, sent);
+    return sent;
   }
 }
 

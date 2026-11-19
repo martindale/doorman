@@ -456,4 +456,43 @@ describe('Scripts', function () {
       assert.strictEqual((await run(hooked, 'GET', '/api/scripts/setup/results', { headers: { 'x-ok': '1' } })).status, 200);
     });
   });
+
+  it('restores a large store before the heartbeat and stages later edits as deltas', async function () {
+    const { MAX_MESSAGE_SIZE } = require('@fabric/core/constants');
+    await boot({ sweepMs: 0 });
+    const bulk = {};
+    for (let i = 0; i < 80; i++) bulk['s' + i] = { answers: { note: 'n'.repeat(1000) } };
+    scripts.content.results.bulk = bulk;
+    await scripts._persist();
+    await doorman.stop();
+
+    await boot({ sweepMs: 0 });
+    const errors = [];
+    scripts.on('error', (error) => errors.push(String(error && error.message ? error.message : error)));
+    const beats = [];
+    scripts.on('beat', (beat) => beats.push(beat));
+    scripts.beat();
+
+    assert.strictEqual(scripts.content.results.bulk.s0.answers.note.length, 1000);
+    assert.strictEqual(scripts.staging.length, 0);
+    assert.strictEqual(beats.length, 1);
+    assert.ok(!errors.some((error) => error.includes('bounded JSON')));
+    const idle = JSON.parse(beats[0].data);
+    assert.strictEqual(typeof idle.stateDigest, 'string');
+    assert.ok(!('state' in idle));
+    assert.ok(Buffer.byteLength(beats[0].data, 'utf8') <= MAX_MESSAGE_SIZE);
+
+    beats.length = 0;
+    scripts.content.results.bulk.s0.answers.extra = 'hi';
+    scripts.beat();
+    assert.ok(!errors.some((error) => error.includes('bounded JSON')));
+    assert.strictEqual(scripts.staging.length, 1);
+    assert.strictEqual(scripts.staging[0].sealedBeaconClock, null);
+    assert.strictEqual(beats.length, 1);
+    for (const beat of beats) {
+      const body = beat.bodyBuffer || Buffer.from(String(beat.data || ''), 'utf8');
+      assert.ok(body.length <= MAX_MESSAGE_SIZE);
+    }
+    assert.strictEqual(scripts.content.results.bulk.s79.answers.note.length, 1000);
+  });
 });

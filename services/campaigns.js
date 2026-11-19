@@ -171,9 +171,18 @@ class Campaigns extends Service {
 
   // ### Lifecycle
 
+  /**
+   * Restore the store before the heartbeat observes state, so that snapshot
+   * is not staged as one replace.
+   * @returns {Promise<Campaigns>}
+   */
+  async load () {
+    await this._restore();
+    return this;
+  }
+
   async start () {
     await super.start();
-    await this._restore();
     this._running = true;
     this._schedule();
     return this;

@@ -514,6 +514,28 @@ describe('Discord', function () {
     });
   });
 
+  it('rewrites one panel DM instead of sending a message per step', async function () {
+    const sent = [];
+    const message = {
+      id: 'panel',
+      edit: async (payload) => { sent.push({ edit: payload }); return message; }
+    };
+    const adapter = new Discord({
+      whispers: true,
+      client: {
+        sendDirect: async (userId, payload) => { sent.push({ userId, send: payload }); return message; }
+      }
+    });
+    const step = { type: 'ScriptStep', session: 'abc', step: 'welcome', panel: true, text: 'Welcome', input: { type: 'confirm' } };
+    await adapter.whisper('1', step);
+    await adapter.whisper('1', Object.assign({}, step, { step: 'features', text: 'Features' }));
+    await adapter.whisper('1', { type: 'PanelNote', session: 'abc', text: 'Saved.' });
+    assert.strictEqual(sent.filter((entry) => entry.send).length, 1);
+    assert.strictEqual(sent.filter((entry) => entry.edit).length, 2);
+    assert.strictEqual(sent[2].edit.content, 'Saved.');
+    assert.deepStrictEqual(sent[2].edit.components, []);
+  });
+
   it('stays idle without a token or client', async function () {
     const adapter = new Discord({});
     await adapter.connect();

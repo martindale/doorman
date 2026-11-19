@@ -150,11 +150,20 @@ class Scripts extends Service {
 
   // ### Lifecycle
 
-  async start () {
-    await super.start();
+  /**
+   * Restore the store, seed, and sweep before the heartbeat observes state,
+   * so that snapshot is not staged as one replace.
+   * @returns {Promise<Scripts>}
+   */
+  async load () {
     await this._restore();
     if (this.settings.seed) await this.seed(this.settings.seed);
     await this.sweep();
+    return this;
+  }
+
+  async start () {
+    await super.start();
     if (this.settings.sweepMs > 0) {
       this._sweeper = setInterval(() => {
         this.sweep().catch((error) => this.emit('error', `[SCRIPTS] sweep: ${errorMessage(error)}`));
@@ -731,6 +740,8 @@ class Scripts extends Service {
         multiline: input.multiline === true
       }
     };
+    if (definition.panel === true) payload.panel = true;
+    return payload;
   }
 
   _scope (session, definition) {
@@ -762,8 +773,14 @@ class Scripts extends Service {
   }
 
   async _deliver (session, object) {
-    if (this.host && typeof this.host.whisper === 'function') return this.host.whisper(session.user, object);
-    this.emit('whisper', { target: session.user, object });
+    const definition = this.definition(session.script, session.version);
+    let message = object;
+    if (definition && definition.panel === true) {
+      if (message && typeof message === 'object' && message.type === 'ScriptStep') message = Object.assign({}, message, { panel: true });
+      else if (typeof message === 'string') message = { type: 'PanelNote', session: session.id, text: message };
+    }
+    if (this.host && typeof this.host.whisper === 'function') return this.host.whisper(session.user, message);
+    this.emit('whisper', { target: session.user, object: message });
     return null;
   }
 
