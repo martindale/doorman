@@ -438,7 +438,7 @@ class Discord extends Service {
       user: interaction.user ? String(interaction.user.id) : null,
       value,
       action,
-      respond: (result) => (step && step.panel ? null : this._respond(interaction, result))
+      respond: (result) => (step && step.panel && !(result && result.ok === false) ? null : this._respond(interaction, result))
     });
   }
 

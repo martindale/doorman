@@ -243,6 +243,57 @@ describe('Doorman', function () {
     await doorman.stop();
   });
 
+  it('registers triggers a plugin creates during start', async function () {
+    class Late extends Plugin {
+      start () {
+        this.triggers = { late: { name: 'late', value: () => 'late' } };
+        return this;
+      }
+    }
+    const doorman = new Doorman({ http: false, local: false });
+    doorman.use(Late, { name: 'late' });
+    assert.ok(doorman.triggers.late);
+    await doorman.stop();
+  });
+
+  it('does not start a plugin that replaced a stopped one', async function () {
+    let starts = 0;
+    class Counter extends Plugin {
+      async start () { starts += 1; return this; }
+      async stop () { return this; }
+    }
+    const doorman = new Doorman({ http: false, local: false });
+    doorman.use(Counter, { name: 'counter' });
+    await doorman.stop();
+    const replacement = new Counter();
+    doorman.plugins.counter = replacement;
+    const afterReplace = starts;
+    await doorman.start();
+    assert.strictEqual(doorman.plugins.counter, replacement);
+    assert.strictEqual(starts, afterReplace);
+    await doorman.stop();
+  });
+
+  it('waits for a plugin to finish starting before it stops it', async function () {
+    const order = [];
+    class Slow extends Plugin {
+      start () {
+        return new Promise((resolve) => {
+          setImmediate(() => {
+            order.push('start');
+            resolve(this);
+          });
+        });
+      }
+
+      async stop () { order.push('stop'); }
+    }
+    const doorman = new Doorman({ http: false, local: false });
+    doorman.use(Slow, { name: 'slow' });
+    await doorman.stop();
+    assert.deepStrictEqual(order, ['start', 'stop']);
+  });
+
   it('starts its plugins again after a stop', async function () {
     let starts = 0;
     class Counter extends Plugin {

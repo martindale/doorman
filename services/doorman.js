@@ -704,9 +704,17 @@ class Doorman extends Service {
       self.plugins[name] = handler;
       handler.trust(self);
 
-      // Plugins start immediately; Doorman#start() awaits these so hosts know
-      // every plugin (and its Store) is ready once `start()` resolves.
-      self._pluginStarts[name] = Promise.resolve().then(() => handler.start()).catch((error) => {
+      // Start now, not on a later turn: a synchronous start() fills triggers
+      // and chat commands before they are registered below. The promise still
+      // settles before Doorman#start() resolves, and a throw stays on this plugin.
+      self._pluginStarts[name] = new Promise((resolve) => {
+        try {
+          resolve(handler.start());
+        } catch (error) {
+          self.emit('error', `[DOORMAN:PLUGIN:${name}] start: ${errorMessage(error)}`);
+          resolve();
+        }
+      }).catch((error) => {
         self.emit('error', `[DOORMAN:PLUGIN:${name}] start: ${errorMessage(error)}`);
       });
 
@@ -845,10 +853,15 @@ class Doorman extends Service {
     // `use()` starts a plugin once; the ones `stop()` stopped start again here.
     // A name restarted here is not constructed again from `config.plugins`.
     const restarted = new Set();
-    for (const name of this._stoppedPlugins || []) {
+    for (const entry of this._stoppedPlugins || []) {
+      const name = entry && typeof entry === 'object' ? entry.name : entry;
+      const stopped = entry && typeof entry === 'object' ? entry.plugin : null;
       const plugin = this.plugins[name];
       if (!plugin || typeof plugin.start !== 'function') continue;
+      // A replacement was already started by use(). Counting it here keeps
+      // config.plugins from constructing another copy.
       restarted.add(name);
+      if (stopped && plugin !== stopped) continue;
       this._pluginStarts[name] = Promise.resolve().then(() => plugin.start()).catch((error) => {
         this.emit('error', `[DOORMAN:PLUGIN:${name}] start: ${errorMessage(error)}`);
       });
@@ -916,8 +929,11 @@ class Doorman extends Service {
     this._stoppedPlugins = [];
     for (const [name, plugin] of Object.entries(this.plugins)) {
       if (typeof plugin.stop !== 'function') continue;
+      if (this._pluginStarts && this._pluginStarts[name]) {
+        try { await this._pluginStarts[name]; } catch (_) { /* startup errors are already reported */ }
+      }
       try { await plugin.stop(); } catch (_) { /* best effort */ }
-      this._stoppedPlugins.push(name);
+      this._stoppedPlugins.push({ name, plugin });
     }
 
     for (const name of Object.keys(this.services)) {

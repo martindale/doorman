@@ -392,6 +392,31 @@ describe('Discord', function () {
         await adapter.disconnect();
       });
     });
+
+    it('tells a panel why an answer was refused', async function () {
+      const client = new FakeFabricDiscord();
+      client.client = rawClient();
+      const adapter = new Discord({ client, whispers: true });
+      const answers = [];
+      adapter.on('answer', (answer) => answers.push(answer));
+      await adapter.connect();
+      await adapter.whisper('u1', step({ type: 'confirm' }, { panel: true }));
+      const refused = press(`doorman:${SESSION}:pick:v:yes`);
+      client.client.emit('interactionCreate', refused);
+      await new Promise((resolve) => setImmediate(resolve));
+      await answers[0].respond({ ok: false, error: 'Pick one of the choices.' });
+      assert.deepStrictEqual(refused.calls[1], ['followUp', {
+        content: 'Pick one of the choices.',
+        flags: 64,
+        allowedMentions: { parse: [] }
+      }]);
+      const accepted = press(`doorman:${SESSION}:pick:v:yes`);
+      client.client.emit('interactionCreate', accepted);
+      await new Promise((resolve) => setImmediate(resolve));
+      await answers[1].respond({ ok: true, label: 'Yes' });
+      assert.deepStrictEqual(accepted.calls, [['deferUpdate']]);
+      await adapter.disconnect();
+    });
   });
 
   describe('commands', function () {
